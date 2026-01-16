@@ -1,0 +1,1 @@
+CREATE DATABASE amt_test;

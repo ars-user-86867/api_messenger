@@ -15,10 +15,41 @@ services:
     networks:
       - app_network_amt
 
+  amt_fastapi_tests:
+    profiles: ["test"]
+    build: 
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        INSTALL_TESTS: "true"  # Для обычного сервиса тесты не нужны
+    image: amt_fastapi_tests:latest
+    volumes:
+      - ../tests:/app/tests  
+    environment:
+      - IN_DOCKER=1
+      - PYTHONPATH=/app
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_SCHEMA=${POSTGRES_SCHEMA}
+      - DBMS=${DBMS}
+      - API_PORT=${API_PORT}
+    # Команда запуска тестов вместо запуска сервера
+    command: pytest -v -s tests/
+    networks:
+      - app_network_amt
+    depends_on:
+      - amt_postgres
+
   amt_fastapi:  # Имя сервиса
     build: 
       context: ..  # Путь к директории с Dockerfile (относительно docker-compose.yml)
       dockerfile: deploy/Dockerfile
+      args:
+        INSTALL_TESTS: "false"  # Для обычного сервиса тесты не нужны
+    image: amt_fastapi:latest
     ports:
       - "${API_PORT}:${API_PORT}"
     # volumes:

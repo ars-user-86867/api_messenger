@@ -1,32 +1,32 @@
-import asyncio
+import os
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.pool import NullPool 
 
 from src.main import app
 from src.db.build import Base
 from src.utils.config.build import config
 
-TEST_DATABASE_URL = config.DATABASE_URL(
-    type="asyncpg", 
-    hide_password=False,
-    override_db="amt_test",
-    override_host="localhost",
-)
-test_engine = create_async_engine(TEST_DATABASE_URL)
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Создает один экземпляр цикла событий на всю сессию тестов."""
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
+@pytest_asyncio.fixture()
+async def engine():
+    """Создает движок БД внутри активного цикла событий."""
+    # Получаем URL из конфига (как ты делал раньше)
+    db_host = config.POSTGRES_HOST if os.getenv("IN_DOCKER") == "1" else "localhost"
+    url = config.DATABASE_URL(
+        type="asyncpg", 
+        hide_password=False,
+        override_db="amt_test",
+        override_host=db_host,
+    )
+    _engine = create_async_engine(url, echo=False, poolclass=NullPool)
+    yield _engine
+    await _engine.dispose()
 
 @pytest_asyncio.fixture
-async def db_session():
-    connection = await test_engine.connect()
+async def db_session(engine):
+    connection = await engine.connect()
     transaction = await connection.begin()
     
     session = AsyncSession(bind=connection, expire_on_commit=False)
@@ -38,9 +38,9 @@ async def db_session():
     await connection.close()
 
 # Создание таблиц в бд
-@pytest_asyncio.fixture(scope="session", autouse=True)
-async def setup_db():
-    async with test_engine.begin() as conn:
+@pytest_asyncio.fixture(autouse=True)
+async def setup_db(engine):
+    async with engine.begin() as conn:
         # await conn.run_sync(Base.metadata.drop_all)   # Удаляем старое
         await conn.run_sync(Base.metadata.create_all) # Создаем чистое
     yield
